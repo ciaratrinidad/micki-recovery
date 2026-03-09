@@ -1,6 +1,893 @@
 <!DOCTYPE html>
 <html lang="en">
+<head><!DOCTYPE html>
+<html lang="en">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Micki's Recovery</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --cream: #f7f3ee; --warm-white: #faf8f5;
+    --sage: #8a9e8c; --sage-light: #c4d4c5; --sage-dark: #5a7a5c;
+    --blush: #d4a8a0; --blush-light: #ecddd9;
+    --charcoal: #2d2d2d; --muted: #8a8480; --border: #e2dbd4; --gold: #c9a96e;
+  }
+  body { font-family: 'DM Mono', monospace; background: var(--cream); color: var(--charcoal); min-height: 100vh; padding: 0 0 80px; }
+
+  .sync-dot { display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-left:6px;vertical-align:middle;transition:background 0.3s; }
+  .sync-dot.synced { background:var(--sage); }
+  .sync-dot.syncing { background:var(--gold);animation:pulse-dot 0.8s ease-in-out infinite; }
+  .sync-dot.error { background:#e07070; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .dynamic-island { position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:999;background:#111;border-radius:30px;padding:10px 18px;display:flex;align-items:center;gap:12px;min-width:220px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.45);cursor:pointer;transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);border:1px solid #2a2a2a;animation:islandPop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+  @keyframes islandPop { from{transform:translateX(-50%) scaleX(0.6) scaleY(0.4);opacity:0} to{transform:translateX(-50%) scaleX(1) scaleY(1);opacity:1} }
+  .dynamic-island:hover { transform:translateX(-50%) scale(1.04); }
+  .island-dot { width:28px;height:28px;border-radius:50%;background:var(--sage-dark);display:flex;align-items:center;justify-content:center;font-size:0.75rem;flex-shrink:0;position:relative; }
+  .island-dot::after { content:'';position:absolute;inset:-3px;border-radius:50%;border:1.5px solid rgba(138,158,140,0.4);animation:pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(1.2)} }
+  .island-content { flex:1;min-width:0; }
+  .island-med-name { font-size:0.65rem;color:#fff;letter-spacing:0.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'DM Mono',monospace; }
+  .island-countdown { font-size:0.75rem;color:var(--sage-light);font-family:'DM Mono',monospace;letter-spacing:0.06em;margin-top:1px; }
+  .island-countdown.urgent { color:#e8a87c; }
+  .island-countdown.overdue { color:#e07070;animation:blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .island-right { font-size:0.55rem;color:#555;text-align:right;letter-spacing:0.06em;font-family:'DM Mono',monospace;line-height:1.5; }
+
+  header { background:var(--charcoal);color:var(--cream);padding:58px 24px 20px;position:sticky;top:0;z-index:100; }
+  header h1 { font-family:'Cormorant Garamond',serif;font-weight:300;font-size:2rem;letter-spacing:0.02em;line-height:1; }
+  header h1 em { font-style:italic;color:var(--sage-light); }
+  .header-sub { font-size:0.65rem;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-top:4px; }
+  .live-time { font-size:0.75rem;color:var(--sage-light);margin-top:2px;font-weight:300; }
+
+  .tabs { display:flex;background:var(--charcoal);border-top:1px solid #444;padding:0 24px; }
+  .tab { flex:1;padding:10px 4px;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;font-family:'DM Mono',monospace; }
+  .tab.active { color:var(--sage-light);border-bottom-color:var(--sage-light); }
+
+  .section { display:none;padding:20px 16px; }
+  .section.active { display:block; }
+
+  .card { background:var(--warm-white);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px; }
+  .card-label { font-size:0.58rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px; }
+
+  .med-card { background:var(--warm-white);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:10px;position:relative;overflow:hidden; }
+  .med-card::before { content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sage); }
+  .med-card.prn::before { background:var(--blush); }
+  .med-card.taken { opacity:0.55; }
+  .med-card.taken::before { background:var(--border); }
+  .med-name { font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:400;color:var(--charcoal);margin-bottom:2px; }
+  .med-dose { font-size:0.65rem;color:var(--muted);letter-spacing:0.06em;margin-bottom:10px; }
+  .med-times { display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px; }
+  .time-pill { background:var(--cream);border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:0.65rem;display:flex;align-items:center;gap:6px;cursor:pointer;transition:all 0.15s; }
+  .time-pill.taken { background:var(--sage-light);border-color:var(--sage);color:var(--sage-dark); }
+  .time-pill.overdue { background:#fdf3e3;border-color:var(--gold);color:#8a6a2a; }
+  .time-pill.upcoming { opacity:0.6; }
+  .pill-check { font-size:0.8rem; }
+  .med-actions { display:flex;gap:8px;flex-wrap:wrap; }
+  .btn-sm { font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;padding:6px 12px;border-radius:4px;border:1px solid var(--border);background:var(--cream);color:var(--charcoal);cursor:pointer;transition:all 0.15s; }
+  .btn-sm:hover { background:var(--border); }
+  .btn-sm.primary { background:var(--sage);color:white;border-color:var(--sage); }
+  .btn-sm.primary:hover { background:var(--sage-dark); }
+  .prn-badge { position:absolute;top:12px;right:12px;font-size:0.5rem;letter-spacing:0.1em;text-transform:uppercase;background:var(--blush-light);color:var(--blush);padding:2px 8px;border-radius:10px; }
+  .scheduled-badge { position:absolute;top:12px;right:12px;font-size:0.5rem;letter-spacing:0.1em;text-transform:uppercase;background:#e8f0e9;color:var(--sage-dark);padding:2px 8px;border-radius:10px; }
+
+  .next-dose-banner { background:var(--charcoal);color:var(--cream);border-radius:8px;padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center; }
+  .next-dose-banner .label { font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted); }
+  .next-dose-banner .med { font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:var(--cream);margin-top:2px; }
+  .next-dose-banner .time { font-size:1.2rem;color:var(--sage-light);font-weight:300; }
+
+  .water-goal { display:flex;align-items:center;justify-content:space-between;margin-bottom:16px; }
+  .water-count { font-family:'Cormorant Garamond',serif;font-size:3rem;font-weight:300;color:var(--sage-dark);line-height:1; }
+  .water-unit { font-size:0.7rem;color:var(--muted);margin-top:4px; }
+  .water-glasses { display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-bottom:16px; }
+  .glass { aspect-ratio:1;border-radius:4px;border:1.5px solid var(--sage-light);background:var(--cream);cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden; }
+  .glass.filled { background:var(--sage);border-color:var(--sage-dark); }
+  .glass.filled::after { content:'💧';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1rem; }
+  .water-btns { display:flex;gap:8px; }
+
+  .rest-item { display:flex;align-items:center;padding:12px 0;border-bottom:1px solid var(--border);gap:12px; }
+  .rest-item:last-child { border-bottom:none; }
+  .rest-time-col { font-size:0.75rem;color:var(--muted);min-width:52px;text-align:right; }
+  .rest-dot { width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0; }
+  .rest-dot.active { background:var(--sage); }
+  .rest-dot.done { background:var(--sage-light); }
+  .rest-label { font-size:0.75rem;color:var(--charcoal);flex:1; }
+  .rest-check { font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:none;font-family:'DM Mono',monospace;transition:all 0.15s; }
+  .rest-check:hover { background:var(--cream); }
+  .rest-check.done { color:var(--sage);border-color:var(--sage-light); }
+
+  .scale-label { display:flex;justify-content:space-between;font-size:0.58rem;color:var(--muted);letter-spacing:0.06em;margin-bottom:6px; }
+  .pain-scale { display:flex;gap:4px;margin-bottom:16px; }
+  .pain-btn { flex:1;aspect-ratio:1;border-radius:4px;border:1.5px solid var(--border);background:var(--cream);font-size:0.65rem;cursor:pointer;transition:all 0.15s;font-family:'DM Mono',monospace;color:var(--muted); }
+  .pain-btn.selected { background:var(--blush);border-color:var(--blush);color:white; }
+  .mood-options { display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px; }
+  .mood-btn { padding:10px 4px;border-radius:6px;border:1.5px solid var(--border);background:var(--cream);cursor:pointer;text-align:center;transition:all 0.15s;font-size:0.6rem;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.04em; }
+  .mood-btn .emoji { font-size:1.4rem;display:block;margin-bottom:4px; }
+  .mood-btn.selected { border-color:var(--sage);background:#e8f0e9;color:var(--sage-dark); }
+  .log-entry { padding:10px 12px;border-radius:6px;background:var(--cream);border:1px solid var(--border);margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start; }
+  .log-time { font-size:0.6rem;color:var(--muted);white-space:nowrap;margin-left:8px; }
+  .log-detail { font-size:0.7rem;color:var(--charcoal); }
+  .log-by { font-size:0.55rem;color:var(--sage);margin-top:3px; }
+
+  .modal-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:flex-end;justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:var(--warm-white);border-radius:12px 12px 0 0;padding:24px 20px 32px;width:100%;max-width:480px; }
+  .modal h3 { font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.2rem;margin-bottom:4px; }
+  .modal p { font-size:0.65rem;color:var(--muted);margin-bottom:16px; }
+  .modal input[type="time"] { width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-family:'DM Mono',monospace;font-size:1rem;background:var(--cream);margin-bottom:12px; }
+  .modal-btns { display:flex;gap:8px; }
+  .modal-btns button { flex:1; }
+
+  .section-title { font-family:'Cormorant Garamond',serif;font-weight:300;font-size:1.4rem;color:var(--charcoal);margin-bottom:4px; }
+  .section-sub { font-size:0.6rem;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:16px; }
+
+  .toast { position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--charcoal);color:var(--cream);padding:10px 20px;border-radius:20px;font-size:0.65rem;letter-spacing:0.06em;opacity:0;transition:all 0.3s;z-index:300;white-space:nowrap; }
+  .toast.show { opacity:1;transform:translateX(-50%) translateY(0); }
+
+  textarea { width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-family:'DM Mono',monospace;font-size:0.7rem;background:var(--cream);resize:none;height:80px;color:var(--charcoal); }
+  textarea:focus { outline:none;border-color:var(--sage); }
+  textarea::placeholder { color:var(--muted); }
+  .btn-full { width:100%;padding:12px;font-family:'DM Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;border-radius:6px;border:none;background:var(--sage);color:white;cursor:pointer;transition:background 0.15s;margin-top:8px; }
+  .btn-full:hover { background:var(--sage-dark); }
+
+  /* WHO BANNER */
+  .who-banner { display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--charcoal);border-bottom:1px solid #3a3a3a; }
+  .who-label { font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-right:4px; }
+  .who-btn { padding:5px 14px;border-radius:20px;border:1px solid #555;background:none;font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);cursor:pointer;transition:all 0.15s;letter-spacing:0.06em; }
+  .who-btn.active { background:var(--sage-dark);color:white;border-color:var(--sage-dark); }
+
+  /* LOADING */
+  .loading-screen { position:fixed;inset:0;background:var(--charcoal);display:flex;align-items:center;justify-content:center;z-index:1000;flex-direction:column;gap:14px; }
+  .loading-screen h2 { font-family:'Cormorant Garamond',serif;font-weight:300;font-size:1.8rem;color:var(--cream); }
+  .loading-screen p { font-size:0.6rem;color:var(--muted);letter-spacing:0.14em;text-transform:uppercase; }
+  .spinner { width:28px;height:28px;border:2px solid #444;border-top-color:var(--sage-light);border-radius:50%;animation:spin 0.8s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  /* HISTORY */
+  .hist-day { background:var(--warm-white);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;overflow:hidden; }
+  .hist-day-header { background:var(--charcoal);color:var(--cream);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer; }
+  .hist-day-date { font-family:"Cormorant Garamond",serif;font-size:1rem;font-weight:300; }
+  .hist-day-meta { font-size:0.58rem;color:var(--muted);letter-spacing:0.08em; }
+  .hist-day-body { padding:12px 14px;display:none; }
+  .hist-day-body.open { display:block; }
+  .hist-section { margin-bottom:12px; }
+  .hist-section-label { font-size:0.55rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px; }
+  .hist-med-row { display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:0.65rem; }
+  .hist-med-row:last-child { border-bottom:none; }
+  .hist-pill { display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.55rem;background:#e8f0e9;color:var(--sage-dark);margin-left:auto; }
+  .hist-pill.missed { background:#fdf3e3;color:#8a6a2a; }
+  .hist-pill.prn { background:var(--blush-light);color:var(--blush); }
+  .hist-mood-chip { display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:var(--cream);border:1px solid var(--border);font-size:0.6rem;margin:3px 3px 3px 0; }
+  .hist-empty { font-size:0.65rem;color:var(--muted);padding:8px 0;font-style:italic; }
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loadingScreen">
+  <div class="spinner"></div>
+  <h2>Micki's <em style="font-style:italic;color:var(--sage-light)">Recovery</em></h2>
+  <p>Connecting…</p>
+</div>
+
+<div class="dynamic-island" id="dynamicIsland" onclick="toggleIsland()">
+  <div class="island-dot" id="islandDot">💊</div>
+  <div class="island-content">
+    <div class="island-med-name" id="islandMedName">Loading…</div>
+    <div class="island-countdown" id="islandCountdown">—</div>
+  </div>
+  <div class="island-right" id="islandRight"></div>
+</div>
+
+<header>
+  <h1>Micki's <em>Recovery</em></h1>
+  <div class="header-sub">Postpartum · Day <span id="dayCount">—</span> <span class="sync-dot" id="syncDot"></span></div>
+  <div class="live-time" id="liveTime">—</div>
+</header>
+
+<div class="who-banner">
+  <span class="who-label">Logging as</span>
+  <button class="who-btn active" id="whoMicki" onclick="setUser('Micki')">Micki</button>
+  <button class="who-btn" id="whoCiara" onclick="setUser('Ciara')">Ciara</button>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('meds',event)">Meds</button>
+  <button class="tab" onclick="showTab('water',event)">Water</button>
+  <button class="tab" onclick="showTab('rest',event)">Rest</button>
+  <button class="tab" onclick="showTab('mood',event)">Mood</button>
+  <button class="tab" onclick="showTab('history',event);loadHistory()">Log</button>
+</div>
+
+<div class="section active" id="tab-meds">
+  <div id="nextDoseBanner"></div>
+  <p class="section-title">Medications</p>
+  <p class="section-sub">Today's schedule</p>
+  <div id="medList"></div>
+</div>
+
+<div class="section" id="tab-water">
+  <p class="section-title">Hydration</p>
+  <p class="section-sub">8 oz glasses · goal: 8–10/day</p>
+  <div class="card">
+    <div class="water-goal">
+      <div>
+        <div class="water-count" id="waterCount">0</div>
+        <div class="water-unit">glasses today</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:1.8rem;color:var(--sage-light)" id="waterEmoji">🤍</div>
+        <div style="font-size:0.6rem;color:var(--muted);margin-top:2px" id="waterMsg">Keep going</div>
+      </div>
+    </div>
+    <div class="water-glasses" id="waterGlasses"></div>
+    <div class="water-btns">
+      <button class="btn-sm primary" onclick="addWater()">+ Glass</button>
+      <button class="btn-sm" onclick="removeWater()">− Undo</button>
+      <button class="btn-sm" onclick="resetWater()">Reset</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Hydration log</div>
+    <div id="waterLog" style="font-size:0.65rem;color:var(--muted)">No glasses logged yet.</div>
+  </div>
+</div>
+
+<div class="section" id="tab-rest">
+  <p class="section-title">Rest & Recovery</p>
+  <p class="section-sub">Post-op rest schedule</p>
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-label">Remember</div>
+    <p style="font-size:0.7rem;color:var(--charcoal);line-height:1.6">Rest is recovery. Aim to be horizontal for <strong>20–30 min</strong> every 2–3 hours. Avoid lifting anything heavier than Rove for 6 weeks.</p>
+  </div>
+  <div class="card">
+    <div class="card-label">Today's rest check-ins</div>
+    <div id="restSchedule"></div>
+  </div>
+</div>
+
+<div class="section" id="tab-mood">
+  <p class="section-title">How's Micki?</p>
+  <p class="section-sub">Pain & mood check-in</p>
+  <div class="card">
+    <div class="card-label">Pain level (0–10)</div>
+    <div class="scale-label"><span>None</span><span>Moderate</span><span>Severe</span></div>
+    <div class="pain-scale" id="painScale"></div>
+  </div>
+  <div class="card">
+    <div class="card-label">How are you feeling?</div>
+    <div class="mood-options" id="moodOptions"></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Notes (optional)</div>
+    <textarea id="moodNotes" placeholder="Anything to note — symptoms, questions for doctor, etc."></textarea>
+    <button class="btn-full" onclick="logMood()">Log Check-in</button>
+  </div>
+  <div class="card">
+    <div class="card-label">Recent check-ins</div>
+    <div id="moodLog" style="font-size:0.65rem;color:var(--muted)">No check-ins yet.</div>
+  </div>
+</div>
+
+<div class="section" id="tab-history">
+  <p class="section-title">History</p>
+  <p class="section-sub">Day-by-day recovery log</p>
+  <div id="historyContent"><div style="font-size:0.65rem;color:var(--muted);padding:20px 0;text-align:center">Loading history…</div></div>
+</div>
+
+<div class="modal-overlay" id="adjustModal">
+  <div class="modal">
+    <h3 id="modalTitle">Adjust dose time</h3>
+    <p id="modalMedName">—</p>
+    <input type="time" id="modalTimeInput">
+    <label style="display:flex;align-items:center;gap:10px;font-size:0.65rem;color:var(--charcoal);margin-bottom:16px;cursor:pointer">
+      <input type="checkbox" id="modalMarkTaken" style="width:16px;height:16px;accent-color:var(--sage)">
+      Mark as taken at this time
+    </label>
+    <div class="modal-btns">
+      <button class="btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn-sm primary" onclick="confirmAdjust()">Update</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://dgqwcnyjtfpgwxishkic.supabase.co';
+const SUPABASE_KEY = 'sb_publishable__C1m4NMACCXIuqqxFh11rw_f6Qt2VaB';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const TODAY = new Date().toISOString().slice(0, 10);
+const SURGERY_DATE = new Date('2025-03-03'); // Rove's birth date
+
+const state = {
+  meds: [],
+  water: { count: 0, log: [] },
+  rest: [],
+  mood: { pain: null, mood: null, log: [] },
+  currentUser: 'Micki',
+};
+
+let isSaving = false;
+let saveTimer = null;
+
+// ─── WHO ─────────────────────────────────────────────────────────────────────
+function setUser(name) {
+  state.currentUser = name;
+  document.getElementById('whoMicki').classList.toggle('active', name === 'Micki');
+  document.getElementById('whoCiara').classList.toggle('active', name === 'Ciara');
+}
+
+// ─── MEDS ────────────────────────────────────────────────────────────────────
+function buildMeds() {
+  function gt(startHour, intervalHours, count) {
+    return Array.from({ length: count }, (_, i) => {
+      const t = new Date(); t.setHours(startHour + i * intervalHours, 0, 0, 0); return t;
+    });
+  }
+  function mt(h, m) { const d = new Date(); d.setHours(h, m, 0, 0); return d; }
+
+  state.meds = [
+    { id:'oxy',        name:'Oxycodone',       dose:'2.5 mg · every 6 hrs',                     prn:false, intervalHours:6,    times:gt(6,6,4),                   taken:[] },
+    { id:'docusate',   name:'Docusate Sodium',  dose:'100 mg · morning & evening',               prn:false, intervalHours:null, times:[mt(8,0),mt(20,0)],           taken:[] },
+    { id:'tylenol',    name:'Acetaminophen',    dose:'500 mg · 2 tabs q8h · started 3/3',        prn:true,  intervalHours:8,    times:gt(7,8,3),                   taken:[], note:'First 3 days from 3/3, then as needed' },
+    { id:'nifedipine', name:'Nifedipine ER',    dose:'30 mg · once daily',                       prn:false, intervalHours:24,   times:[mt(9,0)],                    taken:[] },
+    { id:'gabapentin', name:'Gabapentin',       dose:'300 mg · 3× daily as needed · nerve pain', prn:true,  intervalHours:8,    times:gt(8,8,3),                   taken:[] },
+    { id:'ibuprofen',  name:'Ibuprofen',        dose:'600 mg · q6h × 3 days as needed',          prn:true,  intervalHours:6,    times:gt(7,6,4),                   taken:[], note:'For pain, 3 days as needed' },
+    { id:'senna',      name:'Senna',            dose:'8.6 mg · twice daily as needed',           prn:true,  intervalHours:12,   times:[mt(8,0),mt(20,0)],           taken:[] },
+    { id:'prenatal',   name:'Prenatal Vitamin', dose:'Once daily · with food',                   prn:false, intervalHours:24,   times:[mt(9,0)],                    taken:[] },
+  ];
+}
+
+function buildRest() {
+  state.rest = [
+    { id:0, time:'8:00 AM',  label:'Morning rest (30 min)',     done:false },
+    { id:1, time:'10:30 AM', label:'Mid-morning rest (20 min)', done:false },
+    { id:2, time:'1:00 PM',  label:'Afternoon nap (30–60 min)', done:false },
+    { id:3, time:'3:30 PM',  label:'Afternoon rest (20 min)',   done:false },
+    { id:4, time:'6:00 PM',  label:'Evening rest (20 min)',     done:false },
+    { id:5, time:'9:00 PM',  label:'Wind-down (30 min)',        done:false },
+  ];
+}
+
+// ─── SUPABASE ────────────────────────────────────────────────────────────────
+function setSyncStatus(s) {
+  document.getElementById('syncDot').className = 'sync-dot ' + s;
+}
+
+async function saveToCloud() {
+  setSyncStatus('syncing');
+  try {
+    const payload = {
+      date: TODAY,
+      meds: state.meds.map(m => ({ ...m, times: m.times.map(t => t instanceof Date ? t.toISOString() : t) })),
+      water: state.water,
+      rest: state.rest,
+      mood_log: state.mood.log,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb.from('recovery_state').upsert(payload, { onConflict: 'date' });
+    if (error) throw error;
+    setSyncStatus('synced');
+  } catch(e) {
+    console.error('Save error:', e);
+    setSyncStatus('error');
+    showToast('Sync error — check connection');
+  }
+}
+
+async function loadFromCloud() {
+  try {
+    const { data, error } = await sb.from('recovery_state').select('*').eq('date', TODAY).single();
+    if (error && error.code !== 'PGRST116') throw error;
+    if (data) {
+      if (data.meds) {
+        data.meds.forEach(saved => {
+          const med = state.meds.find(m => m.id === saved.id);
+          if (med) {
+            med.taken = saved.taken || [];
+            if (saved.times && saved.times.length > 0) {
+              med.times = saved.times.map(t => new Date(t));
+            }
+          }
+        });
+      }
+      if (data.water) state.water = data.water;
+      if (data.rest) {
+        data.rest.forEach(saved => {
+          const r = state.rest.find(r => r.id === saved.id);
+          if (r) r.done = saved.done;
+        });
+      }
+      if (data.mood_log) state.mood.log = data.mood_log;
+    }
+    return true;
+  } catch(e) {
+    console.error('Load error:', e);
+    return false;
+  }
+}
+
+function subscribeToChanges() {
+  sb.channel('recovery_realtime')
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'recovery_state',
+      filter: `date=eq.${TODAY}`
+    }, async () => {
+      if (!isSaving) {
+        await loadFromCloud();
+        renderAll();
+      }
+    })
+    .subscribe();
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    isSaving = true;
+    await saveToCloud();
+    isSaving = false;
+  }, 600);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+async function init() {
+  buildMeds();
+  buildRest();
+  initMoodUI();
+
+  const loaded = await loadFromCloud();
+  subscribeToChanges();
+
+  document.getElementById('loadingScreen').style.display = 'none';
+  renderAll();
+  updateIsland();
+  setSyncStatus(loaded ? 'synced' : 'error');
+
+  setInterval(renderAll, 30000);
+  setInterval(updateIsland, 10000);
+  setInterval(updateTime, 1000);
+  updateTime();
+}
+
+init();
+
+// ─── TIME ────────────────────────────────────────────────────────────────────
+function updateTime() {
+  document.getElementById('liveTime').textContent = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  document.getElementById('dayCount').textContent = Math.max(0, Math.floor((new Date() - SURGERY_DATE) / 86400000));
+}
+
+// ─── DYNAMIC ISLAND ──────────────────────────────────────────────────────────
+function toggleIsland() {}
+
+function updateIsland() {
+  const now = new Date();
+  const dot = document.getElementById('islandDot');
+  const nameEl = document.getElementById('islandMedName');
+  const countEl = document.getElementById('islandCountdown');
+  const rightEl = document.getElementById('islandRight');
+
+  let next = null;
+  state.meds.forEach(med => {
+    med.times.forEach((t, i) => {
+      if (!med.taken.includes(i) && (!next || t < next.time)) next = { time:t, med };
+    });
+  });
+
+  if (!next) {
+    dot.textContent='✓'; dot.style.background='var(--sage-dark)';
+    nameEl.textContent='All doses taken'; countEl.textContent='Great job today';
+    countEl.className='island-countdown'; rightEl.textContent=''; return;
+  }
+
+  const diffMs = next.time - now;
+  const diffMin = Math.round(diffMs / 60000);
+  nameEl.textContent = next.med.name;
+
+  if (diffMs < 0) {
+    countEl.textContent=`${Math.abs(diffMin)}m overdue`; countEl.className='island-countdown overdue';
+    dot.textContent='!'; dot.style.background='#c05050';
+  } else if (diffMin <= 15) {
+    countEl.textContent=`in ${diffMin}m`; countEl.className='island-countdown urgent';
+    dot.textContent='⚡'; dot.style.background='#c9863a';
+  } else {
+    const h=Math.floor(diffMin/60), m=diffMin%60;
+    countEl.textContent=h>0?`in ${h}h ${m}m`:`in ${m}m`; countEl.className='island-countdown';
+    dot.textContent='💊'; dot.style.background='var(--sage-dark)';
+  }
+  rightEl.innerHTML=`${fmtTime(next.time)}<br>${next.med.prn?'PRN':'sched'}`;
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderNextDose();
+  renderMeds();
+  renderWater();
+  renderRest();
+  renderMoodLog();
+  updateIsland();
+}
+
+function renderNextDose() {
+  const now = new Date();
+  let next = null;
+  state.meds.forEach(med => {
+    med.times.forEach((t, i) => {
+      if (!med.taken.includes(i) && t > now && (!next || t < next.time)) next = { time:t, med };
+    });
+  });
+  const el = document.getElementById('nextDoseBanner');
+  if (!next) { el.innerHTML=''; return; }
+  const diff = Math.round((next.time - now) / 60000);
+  const ds = diff < 60 ? `${diff}m` : `${Math.floor(diff/60)}h ${diff%60}m`;
+  el.innerHTML=`<div class="next-dose-banner"><div><div class="label">Next dose in ${ds}</div><div class="med">${next.med.name}</div></div><div class="time">${fmtTime(next.time)}</div></div>`;
+}
+
+function renderMeds() {
+  const now = new Date();
+  document.getElementById('medList').innerHTML = state.meds.map(med => {
+    const pills = med.times.map((t, i) => {
+      const taken = med.taken.includes(i);
+      const overdue = !taken && t < now;
+      return `<span class="time-pill ${taken?'taken':overdue?'overdue':'upcoming'}" onclick="markTaken('${med.id}',${i})">
+        <span class="pill-check">${taken?'✓':overdue?'!':'○'}</span>${fmtTime(t)}
+      </span>`;
+    }).join('');
+    const allTaken = med.taken.length === med.times.length;
+    return `<div class="med-card ${allTaken?'taken':med.prn?'prn':''}">
+      ${med.prn?'<span class="prn-badge">PRN</span>':'<span class="scheduled-badge">Scheduled</span>'}
+      <div class="med-name">${med.name}</div>
+      <div class="med-dose">${med.dose}</div>
+      <div class="med-times">${pills}</div>
+      <div class="med-actions">
+        <button class="btn-sm primary" onclick="markNextDose('${med.id}')">Mark taken now</button>
+        <button class="btn-sm" onclick="openAdjust('${med.id}')">Adjust time</button>
+      </div>
+      ${med.note?`<div style="font-size:0.58rem;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${med.note}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function renderWater() {
+  const count = state.water.count;
+  let html='';
+  for(let i=0;i<10;i++) html+=`<div class="glass ${i<count?'filled':''}" onclick="addWater()"></div>`;
+  document.getElementById('waterGlasses').innerHTML=html;
+  document.getElementById('waterCount').textContent=count;
+  const [msg,emoji] = count>=10?['Amazing! 🎉','💧']:count>=8?['Goal reached!','💧']:count>=5?['Halfway there','🩵']:count>=3?['Good start','🩵']:['Keep going 💪','🤍'];
+  document.getElementById('waterMsg').textContent=msg;
+  document.getElementById('waterEmoji').textContent=emoji;
+  const logEl=document.getElementById('waterLog');
+  logEl.innerHTML=state.water.log.length===0?'No glasses logged yet today.':
+    state.water.log.slice().reverse().map(e=>
+      `<div style="padding:4px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between">
+        <span>Glass ${e.glass}${e.by?' · <span style="color:var(--sage);font-size:0.6rem">'+e.by+'</span>':''}</span>
+        <span style="color:var(--muted)">${e.time}</span>
+      </div>`).join('');
+}
+
+function renderRest() {
+  document.getElementById('restSchedule').innerHTML=state.rest.map(r=>`
+    <div class="rest-item">
+      <div class="rest-time-col">${r.time}</div>
+      <div class="rest-dot ${r.done?'done':'active'}"></div>
+      <div class="rest-label">${r.label}</div>
+      <button class="rest-check ${r.done?'done':''}" onclick="toggleRest(${r.id})">${r.done?'✓ Done':'Done?'}</button>
+    </div>`).join('');
+}
+
+function renderMoodLog() {
+  const logEl = document.getElementById('moodLog');
+  if (!state.mood.log.length) { logEl.textContent='No check-ins yet.'; return; }
+  logEl.innerHTML=state.mood.log.map(e=>`
+    <div class="log-entry">
+      <div>
+        <div class="log-detail">Pain: ${e.pain!==null?e.pain+'/10':'—'} · ${e.mood||'—'}</div>
+        ${e.notes?`<div style="font-size:0.6rem;color:var(--muted);margin-top:2px">${e.notes}</div>`:''}
+        ${e.by?`<div class="log-by">logged by ${e.by}</div>`:''}
+      </div>
+      <div class="log-time">${e.time}</div>
+    </div>`).join('');
+}
+
+// ─── MOOD ────────────────────────────────────────────────────────────────────
+function initMoodUI() {
+  const painEl=document.getElementById('painScale');
+  for(let i=0;i<=10;i++) painEl.innerHTML+=`<button class="pain-btn" id="pain-${i}" onclick="selectPain(${i})">${i}</button>`;
+  document.getElementById('moodOptions').innerHTML=[
+    {label:'Good',emoji:'😊'},{label:'Okay',emoji:'😐'},{label:'Tired',emoji:'😴'},{label:'Rough',emoji:'😔'}
+  ].map(m=>`<button class="mood-btn" id="mood-${m.label}" onclick="selectMood('${m.label}')"><span class="emoji">${m.emoji}</span>${m.label}</button>`).join('');
+}
+
+function selectPain(val) {
+  state.mood.pain=val;
+  document.querySelectorAll('.pain-btn').forEach(b=>b.classList.remove('selected'));
+  document.getElementById(`pain-${val}`).classList.add('selected');
+}
+function selectMood(val) {
+  state.mood.mood=val;
+  document.querySelectorAll('.mood-btn').forEach(b=>b.classList.remove('selected'));
+  document.getElementById(`mood-${val}`).classList.add('selected');
+}
+function logMood() {
+  if(state.mood.pain===null && !state.mood.mood){ showToast('Select pain level or mood first'); return; }
+  state.mood.log.unshift({
+    time: new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+    pain: state.mood.pain, mood: state.mood.mood,
+    notes: document.getElementById('moodNotes').value.trim(),
+    by: state.currentUser,
+  });
+  state.mood.pain=null; state.mood.mood=null;
+  document.getElementById('moodNotes').value='';
+  document.querySelectorAll('.pain-btn,.mood-btn').forEach(b=>b.classList.remove('selected'));
+  renderMoodLog();
+  scheduleSave();
+  showToast('Check-in logged ✓');
+}
+
+// ─── MED ACTIONS ─────────────────────────────────────────────────────────────
+function anchorSchedule(med, takenAtMs, takenIdx) {
+  if(!med.intervalHours) return;
+  for(let i=0;i<med.times.length;i++)
+    med.times[i]=new Date(takenAtMs+(i-takenIdx)*med.intervalHours*3600000);
+}
+
+function markNextDose(medId) {
+  const now=new Date();
+  const med=state.meds.find(m=>m.id===medId);
+  if(!med) return;
+  const nextIdx=med.times.findIndex((_,i)=>!med.taken.includes(i));
+  if(nextIdx===-1){ showToast('All doses taken for today'); return; }
+  if(med.taken.length===0) anchorSchedule(med,now.getTime(),nextIdx);
+  else if(med.intervalHours) {
+    for(let i=nextIdx+1;i<med.times.length;i++)
+      med.times[i]=new Date(now.getTime()+med.intervalHours*3600000*(i-nextIdx));
+  }
+  med.taken.push(nextIdx);
+  showToast(`${med.name} marked · schedule updated`);
+  renderAll(); scheduleSave();
+}
+
+function markTaken(medId, idx) {
+  const med=state.meds.find(m=>m.id===medId);
+  if(!med) return;
+  if(med.taken.includes(idx)) {
+    med.taken=med.taken.filter(i=>i!==idx);
+    showToast('Unmarked');
+  } else {
+    const now=new Date();
+    if(med.taken.length===0) anchorSchedule(med,now.getTime(),idx);
+    else if(med.intervalHours) {
+      for(let i=idx+1;i<med.times.length;i++)
+        med.times[i]=new Date(now.getTime()+med.intervalHours*3600000*(i-idx));
+    }
+    med.taken.push(idx);
+    showToast(`${med.name} marked · schedule anchored from now`);
+  }
+  renderAll(); scheduleSave();
+}
+
+let adjustingMedId=null;
+function openAdjust(medId) {
+  adjustingMedId=medId;
+  const med=state.meds.find(m=>m.id===medId);
+  document.getElementById('modalTitle').textContent='Adjust dose time';
+  document.getElementById('modalMedName').textContent=`${med.name} — set time & cascade all doses`;
+  const nextIdx=med.times.findIndex((_,i)=>!med.taken.includes(i));
+  const t=nextIdx!==-1?med.times[nextIdx]:new Date();
+  document.getElementById('modalTimeInput').value=`${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+  document.getElementById('modalMarkTaken').checked=false;
+  document.getElementById('adjustModal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('adjustModal').classList.remove('open');
+  adjustingMedId=null;
+}
+function confirmAdjust() {
+  const med=state.meds.find(m=>m.id===adjustingMedId);
+  if(!med) return closeModal();
+  const val=document.getElementById('modalTimeInput').value;
+  if(!val) return;
+  const [h,m]=val.split(':').map(Number);
+  const newTime=new Date(); newTime.setHours(h,m,0,0);
+  const markTakenChecked=document.getElementById('modalMarkTaken').checked;
+  const nextIdx=med.times.findIndex((_,i)=>!med.taken.includes(i));
+  if(nextIdx!==-1) {
+    anchorSchedule(med,newTime.getTime(),nextIdx);
+    if(markTakenChecked) med.taken.push(nextIdx);
+  }
+  closeModal();
+  showToast(markTakenChecked?`${med.name} marked taken · schedule updated`:'Schedule updated · all doses adjusted');
+  renderAll(); scheduleSave();
+}
+
+// ─── WATER ───────────────────────────────────────────────────────────────────
+function addWater() {
+  if(state.water.count>=10) return;
+  state.water.count++;
+  state.water.log.push({ glass:state.water.count, time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}), by:state.currentUser });
+  renderWater(); scheduleSave();
+}
+function removeWater() {
+  if(state.water.count<=0) return;
+  state.water.count--; state.water.log.pop();
+  renderWater(); scheduleSave();
+}
+function resetWater() {
+  state.water.count=0; state.water.log=[];
+  renderWater(); scheduleSave(); showToast('Water reset for new day');
+}
+
+// ─── REST ────────────────────────────────────────────────────────────────────
+function toggleRest(id) {
+  const r=state.rest.find(r=>r.id===id);
+  if(r){ r.done=!r.done; renderRest(); scheduleSave(); }
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+function showTab(name,e) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  if(e&&e.target) e.target.classList.add('active');
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function fmtTime(d) { return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+document.getElementById('adjustModal').addEventListener('click',function(e){ if(e.target===this) closeModal(); });
+
+
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+let historyLoaded = false;
+
+async function loadHistory() {
+  if (historyLoaded) return;
+  const el = document.getElementById('historyContent');
+  el.innerHTML = '<div style="font-size:0.65rem;color:var(--muted);padding:20px 0;text-align:center">Loading…</div>';
+
+  try {
+    const { data, error } = await sb
+      .from('recovery_state')
+      .select('date, meds, water, rest, mood_log')
+      .order('date', { ascending: false })
+      .limit(30);
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<div style="font-size:0.65rem;color:var(--muted);padding:20px 0;text-align:center">No history yet — check back after your first full day.</div>';
+      return;
+    }
+
+    el.innerHTML = data.map((row, rowIdx) => {
+      const dateObj = new Date(row.date + 'T12:00:00');
+      const dayNum = Math.floor((dateObj - SURGERY_DATE) / 86400000);
+      const dateStr = dateObj.toLocaleDateString([], { weekday:'short', month:'short', day:'numeric' });
+      const isToday = row.date === TODAY;
+
+      // Meds summary
+      const medRows = (row.meds || []).map(med => {
+        const takenCount = (med.taken || []).length;
+        const totalCount = (med.times || []).length;
+        const allTaken = takenCount === totalCount;
+        const isPrn = med.prn;
+        const pillClass = isPrn ? 'prn' : allTaken ? '' : 'missed';
+        const pillLabel = isPrn
+          ? (takenCount > 0 ? `${takenCount}× taken` : 'not taken')
+          : (allTaken ? 'all doses' : `${takenCount}/${totalCount} doses`);
+        return `<div class="hist-med-row">
+          <span>${med.name}</span>
+          <span class="hist-pill ${pillClass}">${pillLabel}</span>
+        </div>`;
+      }).join('');
+
+      // Water
+      const waterCount = row.water ? row.water.count || 0 : 0;
+      const waterBar = waterCount > 0
+        ? `<div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap">${Array.from({length:10},(_,i)=>`<div style="width:14px;height:14px;border-radius:2px;background:${i<waterCount?'var(--sage)':'var(--border)'};"></div>`).join('')}</div>`
+        : '<span class="hist-empty">No water logged</span>';
+
+      // Rest
+      const restItems = (row.rest || []);
+      const restDone = restItems.filter(r => r.done).length;
+      const restTotal = restItems.length;
+      const restStr = restTotal > 0 ? `${restDone}/${restTotal} rest periods completed` : 'No rest data';
+
+      // Mood log
+      const moodEntries = (row.mood_log || []);
+      const moodHtml = moodEntries.length === 0
+        ? '<span class="hist-empty">No check-ins logged</span>'
+        : moodEntries.map(e => `
+          <div class="hist-mood-chip">
+            <span>${e.mood || '—'}</span>
+            ${e.pain !== null && e.pain !== undefined ? `<span style="color:var(--muted)">·</span><span>pain ${e.pain}/10</span>` : ''}
+            <span style="color:var(--muted);font-size:0.5rem">${e.time}${e.by ? ' · '+e.by : ''}</span>
+          </div>`).join('');
+
+      // Summary line for collapsed view
+      const avgPain = moodEntries.filter(e => e.pain !== null).length > 0
+        ? (moodEntries.filter(e=>e.pain!==null).reduce((a,e)=>a+e.pain,0) / moodEntries.filter(e=>e.pain!==null).length).toFixed(1)
+        : null;
+      const summaryParts = [
+        `💊 ${(row.meds||[]).filter(m=>(m.taken||[]).length>0).length} meds`,
+        `💧 ${waterCount} glasses`,
+        avgPain ? `pain avg ${avgPain}` : null,
+      ].filter(Boolean).join(' · ');
+
+      return `<div class="hist-day">
+        <div class="hist-day-header" onclick="toggleHistDay(${rowIdx})">
+          <div>
+            <div class="hist-day-date">${isToday ? 'Today' : dateStr}</div>
+            <div class="hist-day-meta">Day ${dayNum > 0 ? dayNum : '?'} · ${summaryParts}</div>
+          </div>
+          <span style="color:var(--muted);font-size:0.8rem" id="hist-chevron-${rowIdx}">▾</span>
+        </div>
+        <div class="hist-day-body" id="hist-body-${rowIdx}">
+          <div class="hist-section">
+            <div class="hist-section-label">Medications</div>
+            ${medRows || '<span class="hist-empty">No med data</span>'}
+          </div>
+          <div class="hist-section">
+            <div class="hist-section-label">Hydration · ${waterCount} glasses</div>
+            ${waterBar}
+          </div>
+          <div class="hist-section">
+            <div class="hist-section-label">Rest</div>
+            <div style="font-size:0.65rem;color:var(--charcoal)">${restStr}</div>
+          </div>
+          <div class="hist-section">
+            <div class="hist-section-label">Mood & pain check-ins</div>
+            ${moodHtml}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Auto-open today
+    if (data[0] && data[0].date === TODAY) {
+      const body = document.getElementById('hist-body-0');
+      const chev = document.getElementById('hist-chevron-0');
+      if (body) { body.classList.add('open'); }
+      if (chev) chev.textContent = '▴';
+    }
+
+    historyLoaded = true;
+  } catch(e) {
+    console.error('History error:', e);
+    el.innerHTML = '<div style="font-size:0.65rem;color:#e07070;padding:20px 0;text-align:center">Could not load history — check connection.</div>';
+  }
+}
+
+function toggleHistDay(idx) {
+  const body = document.getElementById(`hist-body-${idx}`);
+  const chev = document.getElementById(`hist-chevron-${idx}`);
+  if (!body) return;
+  const isOpen = body.classList.toggle('open');
+  if (chev) chev.textContent = isOpen ? '▴' : '▾';
+}
+
+// Invalidate history cache on save so it refreshes next open
+const _origScheduleSave = scheduleSave;
+function scheduleSave() {
+  historyLoaded = false;
+  _origScheduleSave();
+}
+
+</script>
+</body>
+</html>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Micki's Recovery</title>
